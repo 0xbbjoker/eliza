@@ -61,8 +61,8 @@ export const replyAction = {
 		const responseContentObj = parseJSONObjectFromText(response) as Content;
 
 		const responseContent = {
-			thought: responseContentObj.thought,
-			text: (responseContentObj.message as string) || "",
+			thought: responseContentObj?.thought || "",
+			text: responseContentObj?.message || "",
 			actions: ["REPLY"],
 		};
 
