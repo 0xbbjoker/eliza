@@ -15,7 +15,7 @@ import * as path from "node:path";
 import { character as defaultCharacter } from "../characters/eliza";
 import { AgentServer } from "../server/index.ts";
 import { jsonToCharacter, loadCharacterTryPath } from "../server/loader.ts";
-import os from "os";
+import os from "node:os";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -169,7 +169,7 @@ const startAgents = async () => {
 	// Assign the required functions first
 	server.startAgent = async (character) => {
 		logger.info(`Starting agent for character ${character.name}`);
-		return startAgent(character, server);
+		return startAgent(character, server, undefined, [], options);
 	};
 	server.stopAgent = (runtime: IAgentRuntime) => {
 		stopAgent(runtime, server);
@@ -185,7 +185,15 @@ const startAgents = async () => {
 	let isPlugin = false;
 	let pluginModule: Plugin | null = null;
 	let projectPath = "";
-	let projectModule: { default?: { agents: any[] } } | null = null;
+	let projectModule: {
+		default?: {
+			agents: Array<{
+				character: Character;
+				init?: (runtime: IAgentRuntime) => void;
+				plugins?: Plugin[];
+			}>;
+		};
+	} | null = null;
 	let useDefaultCharacter = false;
 
 	try {
@@ -466,7 +474,13 @@ const startAgents = async () => {
 				pluginModule.name || "unnamed plugin"
 			}`,
 		);
-		await startAgent(defaultCharacter, server, undefined, [pluginModule]);
+		await startAgent(
+			defaultCharacter,
+			server,
+			undefined,
+			[pluginModule],
+			options,
+		);
 		logger.info("Default character started with plugin successfully");
 	} else if (isProject) {
 		// Load all project agents, call their init and register their plugins
@@ -482,6 +496,7 @@ const startAgents = async () => {
 					server,
 					agent.init,
 					agent.plugins || [],
+					options,
 				);
 				startedAgents.push(runtime);
 			} catch (agentError) {
@@ -495,7 +510,7 @@ const startAgents = async () => {
 			logger.warn(
 				"Failed to start any agents from project, falling back to default character",
 			);
-			await startAgent(defaultCharacter, server);
+			await startAgent(defaultCharacter, server, undefined, [], options);
 		} else {
 			logger.info(
 				`Successfully started ${startedAgents.length} agents from project`,
@@ -503,7 +518,7 @@ const startAgents = async () => {
 		}
 	} else {
 		logger.info("No project or plugin found, starting default character");
-		await startAgent(defaultCharacter, server);
+		await startAgent(defaultCharacter, server, undefined, [], options);
 	}
 
 	// Rest of the function remains the same...
