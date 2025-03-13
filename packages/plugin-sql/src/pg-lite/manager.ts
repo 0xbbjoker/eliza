@@ -8,9 +8,6 @@ import { drizzle } from "drizzle-orm/pglite";
 import { migrate } from "drizzle-orm/pglite/migrator";
 import type { IDatabaseClientManager } from "../types";
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
 /**
  * Class representing a database client manager for PGlite.
  * @implements { IDatabaseClientManager }
@@ -151,8 +148,14 @@ export class PGliteClientManager implements IDatabaseClientManager<PGlite> {
 	async runMigrations(): Promise<void> {
 		try {
 			const db = drizzle(this.client);
+			
+			const packageJsonPath = await import.meta.resolve('@elizaos/plugin-sql/package.json');
+			const packageJsonUrl = new URL(packageJsonPath);
+			const packageDir = path.dirname(fileURLToPath(packageJsonUrl));
+			const migrationsDir = path.join(packageDir, 'drizzle/migrations');
+			
 			await migrate(db, {
-				migrationsFolder: path.resolve(__dirname, "../drizzle/migrations"),
+				migrationsFolder: migrationsDir,
 			});
 		} catch (error) {
 			logger.error("Failed to run database migrations (pglite):", error);

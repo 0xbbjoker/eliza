@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { logger } from "@elizaos/core";
@@ -7,9 +8,6 @@ import pkg, { type Pool as PgPool } from "pg";
 import type { IDatabaseClientManager } from "../types";
 
 const { Pool } = pkg;
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 /**
  * Manages connections to a PostgreSQL database using a connection pool.
@@ -202,11 +200,16 @@ export class PostgresConnectionManager
 	 */
 	async runMigrations(): Promise<void> {
 		logger.info("Running database migrations (pg)");
-		console.trace();
 		try {
 			const db = drizzle(this.pool);
+
+			const packageJsonPath = await import.meta.resolve('@elizaos/plugin-sql/package.json');
+			const packageJsonUrl = new URL(packageJsonPath);
+			const packageDir = path.dirname(fileURLToPath(packageJsonUrl));
+			const migrationsDir = path.join(packageDir, 'drizzle/migrations');
+			
 			await migrate(db, {
-				migrationsFolder: path.resolve(__dirname, "../drizzle/migrations"),
+				migrationsFolder: migrationsDir,
 			});
 		} catch (error) {
 			logger.error("Failed to run database migrations (pg):", error);
