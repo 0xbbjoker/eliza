@@ -10,6 +10,7 @@ import {
   type Memory,
   type Provider,
   type UUID,
+  ModelType,
 } from '@elizaos/core';
 
 // Move getRecentInteractions outside the provider
@@ -49,6 +50,58 @@ const getRecentInteractions = async (
 };
 
 /**
+ * Filter messages using reranker to find the most relevant ones to the current query
+ * @param runtime - The agent runtime object
+ * @param messages - Array of memories/messages to filter
+ * @param query - The current message text to use as query
+ * @param maxResults - Maximum number of results to return
+ * @returns Array of filtered memories sorted by relevance
+ */
+const filterRelevantMessages = async (
+  runtime: IAgentRuntime,
+  messages: Memory[],
+  query: string,
+  maxResults: number = 10
+): Promise<Memory[]> => {
+  if (!messages || messages.length === 0) return [];
+  if (messages.length <= maxResults) return messages;
+
+  // Check if the reranker model is available
+  const hasReranker = runtime.getModel(ModelType.TEXT_RERANKER);
+  if (!hasReranker) {
+    // Fall back to the most recent messages if reranker is not available
+    return messages.slice(0, maxResults);
+  }
+
+  try {
+    // Extract text content from messages
+    const documentTexts = messages.map((msg) => msg.content.text);
+
+    // Use reranker to get most relevant messages
+    const rerankedDocs = await runtime.useModel(ModelType.TEXT_RERANKER, {
+      query,
+      documents: documentTexts,
+      maxResults,
+    });
+
+    console.log('rerankedDocs:::::', rerankedDocs);
+
+    // Map back to original Memory objects and sort by relevance score
+    return rerankedDocs
+      .map((doc) => ({
+        memory: messages[doc.index],
+        score: doc.score,
+      }))
+      .sort((a, b) => b.score - a.score)
+      .map((item) => item.memory);
+  } catch (error) {
+    // Fall back to returning the most recent messages if reranking fails
+    console.error('Error using reranker to filter messages:', error);
+    return messages.slice(0, maxResults);
+  }
+};
+
+/**
  * A provider object that retrieves recent messages, interactions, and memories based on a given message.
  * @typedef {object} Provider
  * @property {string} name - The name of the provider ("RECENT_MESSAGES").
@@ -82,16 +135,30 @@ export const recentMessagesProvider: Provider = {
         : Promise.resolve([]),
     ]);
 
+    console.log('recentMessagesData:::::', recentMessagesData.length);
+
+    // Filter the most relevant messages using the reranker if we have more than 15 messages
+    const filteredRecentMessages =
+      recentMessagesData.length > 15
+        ? await filterRelevantMessages(runtime, recentMessagesData, message.content.text, 15)
+        : recentMessagesData;
+
+    // Filter the most relevant interactions using the reranker if we have more than 10 interactions
+    const filteredRecentInteractions =
+      recentInteractionsData.length > 10
+        ? await filterRelevantMessages(runtime, recentInteractionsData, message.content.text, 10)
+        : recentInteractionsData;
+
     const isPostFormat = room?.type === ChannelType.FEED || room?.type === ChannelType.THREAD;
 
     // Format recent messages and posts in parallel
     const [formattedRecentMessages, formattedRecentPosts] = await Promise.all([
       formatMessages({
-        messages: recentMessagesData,
+        messages: filteredRecentMessages,
         entities: entitiesData,
       }),
       formatPosts({
-        messages: recentMessagesData,
+        messages: filteredRecentMessages,
         entities: entitiesData,
         conversationHeader: false,
       }),
@@ -118,11 +185,11 @@ export const recentMessagesProvider: Provider = {
     const interactionEntityMap = new Map<UUID, Entity>();
 
     // Only proceed if there are interactions to process
-    if (recentInteractionsData.length > 0) {
+    if (filteredRecentInteractions.length > 0) {
       // Get unique entity IDs that aren't the runtime agent
       const uniqueEntityIds = [
         ...new Set(
-          recentInteractionsData
+          filteredRecentInteractions
             .map((message) => message.entityId)
             .filter((id) => id !== runtime.agentId)
         ),
@@ -206,13 +273,15 @@ export const recentMessagesProvider: Provider = {
 
     // Process both types of interactions in parallel
     const [recentMessageInteractions, recentPostInteractions] = await Promise.all([
-      getRecentMessageInteractions(recentInteractionsData),
-      getRecentPostInteractions(recentInteractionsData, entitiesData),
+      getRecentMessageInteractions(filteredRecentInteractions),
+      getRecentPostInteractions(filteredRecentInteractions, entitiesData),
     ]);
 
     const data = {
-      recentMessages: recentMessagesData,
-      recentInteractions: recentInteractionsData,
+      recentMessages: filteredRecentMessages,
+      recentInteractions: filteredRecentInteractions,
+      originalMessageCount: recentMessagesData.length,
+      originalInteractionCount: recentInteractionsData.length,
     };
 
     const values = {
@@ -227,6 +296,8 @@ export const recentMessagesProvider: Provider = {
     const text = [isPostFormat ? recentPosts : recentMessages + recieveMessage]
       .filter(Boolean)
       .join('\n\n');
+
+    console.log('RERRANKED TEXT:::::', text);
 
     return {
       data,
