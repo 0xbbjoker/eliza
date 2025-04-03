@@ -90,6 +90,7 @@ export const ModelType = {
   VIDEO: 'VIDEO',
   OBJECT_SMALL: 'OBJECT_SMALL',
   OBJECT_LARGE: 'OBJECT_LARGE',
+  TEXT_RERANKER: 'TEXT_RERANKER',
 } as const;
 
 export type ServiceTypeName = (typeof ServiceType)[keyof typeof ServiceType];
@@ -1415,6 +1416,84 @@ export interface VideoProcessingParams extends BaseModelParams {
   videoUrl: string;
   /** The type of video processing to perform */
   processingType: string;
+}
+
+/**
+ * Parameters for reranker models
+ */
+export interface RerankerParams extends BaseModelParams {
+  /** The query string to be reranked against documents */
+  query: string;
+
+  /** An array of documents to be reranked */
+  documents: string[];
+
+  /** Optional maximum number of results to return */
+  maxResults?: number;
+
+  /** Optional model name, defaults to the best-performing model */
+  model?: string;
+
+  /** Optional parameter to control how the API handles documents exceeding token limits (Cohere-specific) */
+  truncate?: string;
+
+  /** Optional parameter for controlling document chunking (Cohere-specific) */
+  maxChunksPerDoc?: number;
+
+  /** Optional parameter for testing different reranker versions (Cohere-specific) */
+  evaluationMode?: boolean;
+}
+
+/**
+ * Generic interface representing a reranked document
+ */
+export interface RerankedDocument {
+  /** The original index of the document */
+  index: number;
+
+  /** The relevance score assigned by the reranker */
+  score: number;
+
+  /** The document content */
+  document: string;
+}
+
+/**
+ * Generic interface for reranker request without runtime
+ */
+export interface RerankerRequest {
+  /** The query to use for reranking */
+  query: string;
+
+  /** The documents to rerank */
+  documents: string[];
+
+  /** Optional maximum results to return */
+  maxResults?: number;
+
+  /** Optional specific model to use */
+  model?: string;
+
+  /** Optional parameter to control how the API handles documents exceeding token limits (Cohere-specific) */
+  truncate?: string;
+
+  /** Optional parameter for controlling document chunking (Cohere-specific) */
+  maxChunksPerDoc?: number;
+
+  /** Optional parameter for testing different reranker versions (Cohere-specific) */
+  evaluationMode?: boolean;
+}
+
+/**
+ * Generic interface for reranker model response
+ * @template T The model-specific response format
+ */
+export interface RerankerResponse<T = any> {
+  /** Raw response from the reranker API */
+  raw: T;
+
+  /** Standardized reranked documents */
+  results: RerankedDocument[];
 }
 
 /**
