@@ -1,5 +1,5 @@
 import type { IAgentRuntime, Memory, Provider, KnowledgeItem } from '@elizaos/core';
-import { addHeader, ModelType } from '@elizaos/core';
+import { addHeader, logger, ModelType } from '@elizaos/core';
 
 /**
  * Filter knowledge fragments by relevance using reranker when available
@@ -7,13 +7,15 @@ import { addHeader, ModelType } from '@elizaos/core';
  * @param query - The query text to match against
  * @param fragments - The knowledge fragments to filter
  * @param maxResults - Maximum number of results to return
+ * @param minScoreThreshold - Minimum score threshold for filtering
  * @returns Filtered fragments sorted by relevance
  */
 const filterRelevantKnowledge = async (
   runtime: IAgentRuntime,
   query: string,
   fragments: KnowledgeItem[],
-  maxResults: number = 5
+  maxResults: number = 10,
+  minScoreThreshold: number = 0.05
 ): Promise<KnowledgeItem[]> => {
   // If we don't have enough fragments to filter, return them all
   if (!fragments || fragments.length <= maxResults) return fragments;
@@ -30,22 +32,18 @@ const filterRelevantKnowledge = async (
     const documentTexts = fragments.map((fragment) => fragment.content.text);
 
     // Use reranker to get most relevant fragments
-    const rerankedDocs = await runtime.useModel(ModelType.TEXT_RERANKER, {
+    // The reranker plugin now returns an array of { index, score } objects
+    const rankedResults = await runtime.useModel(ModelType.TEXT_RERANKER, {
       query,
       documents: documentTexts,
-      maxResults,
+      topN: maxResults,
+      minScoreThreshold,
     });
 
-    // Map back to original KnowledgeItem objects and sort by relevance score
-    return rerankedDocs
-      .map((doc) => ({
-        item: fragments[doc.index],
-        score: doc.score,
-      }))
-      .sort((a, b) => b.score - a.score)
-      .map((item) => item.item);
+    // Simply map the indices to the original fragments
+    return rankedResults.map((result) => fragments[result.index]);
   } catch (error) {
-    console.error('Error using reranker to filter knowledge:', error);
+    logger.warn('Error using reranker to filter knowledge:', error);
     // Fall back to the initial vector search results
     return fragments.slice(0, maxResults);
   }
@@ -78,16 +76,10 @@ export const knowledgeProvider: Provider = {
     // Get initial knowledge fragments using vector search
     const knowledgeFragments = await runtime.getKnowledge(message);
 
-    console.log('knowledgeFragments:::::', knowledgeFragments);
-
-    console.log('message.content.text:::::', message.content.text);
-
-    console.log('knowledgeFragments.length:::::', knowledgeFragments.length);
-
     // Apply reranking if we have enough fragments
     const filteredKnowledge =
       knowledgeFragments.length > 5
-        ? await filterRelevantKnowledge(runtime, message.content.text, knowledgeFragments)
+        ? await filterRelevantKnowledge(runtime, message.content.text, knowledgeFragments, 10, 0.05)
         : knowledgeFragments;
 
     const knowledge =
@@ -97,8 +89,6 @@ export const knowledgeProvider: Provider = {
             filteredKnowledge.map((knowledge) => `- ${knowledge.content.text}`).join('\n')
           )
         : '';
-
-    console.log('reranked KNOWLEDGE:::::', knowledge);
 
     return {
       data: {
