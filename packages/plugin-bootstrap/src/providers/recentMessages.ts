@@ -11,6 +11,7 @@ import {
   type Provider,
   type UUID,
   ModelType,
+  logger,
 } from '@elizaos/core';
 
 // Move getRecentInteractions outside the provider
@@ -55,13 +56,15 @@ const getRecentInteractions = async (
  * @param messages - Array of memories/messages to filter
  * @param query - The current message text to use as query
  * @param maxResults - Maximum number of results to return
+ * @param minScoreThreshold - Minimum relevance score threshold (messages below this are considered irrelevant)
  * @returns Array of filtered memories sorted by relevance
  */
 const filterRelevantMessages = async (
   runtime: IAgentRuntime,
   messages: Memory[],
   query: string,
-  maxResults: number = 10
+  maxResults: number = 10,
+  minScoreThreshold: number = 0.08
 ): Promise<Memory[]> => {
   if (!messages || messages.length === 0) return [];
   if (messages.length <= maxResults) return messages;
@@ -78,25 +81,19 @@ const filterRelevantMessages = async (
     const documentTexts = messages.map((msg) => msg.content.text);
 
     // Use reranker to get most relevant messages
-    const rerankedDocs = await runtime.useModel(ModelType.TEXT_RERANKER, {
+    // The reranker plugin now returns an array of { index, score } objects
+    const rankedResults = await runtime.useModel(ModelType.TEXT_RERANKER, {
       query,
       documents: documentTexts,
-      maxResults,
+      topN: maxResults,
+      minScoreThreshold,
     });
 
-    console.log('rerankedDocs:::::', rerankedDocs);
-
-    // Map back to original Memory objects and sort by relevance score
-    return rerankedDocs
-      .map((doc) => ({
-        memory: messages[doc.index],
-        score: doc.score,
-      }))
-      .sort((a, b) => b.score - a.score)
-      .map((item) => item.memory);
+    // Simply map the indices to the original messages
+    return rankedResults.map((result) => messages[result.index]);
   } catch (error) {
     // Fall back to returning the most recent messages if reranking fails
-    console.error('Error using reranker to filter messages:', error);
+    logger.error('Error using reranker to filter messages:', error);
     return messages.slice(0, maxResults);
   }
 };
@@ -135,18 +132,22 @@ export const recentMessagesProvider: Provider = {
         : Promise.resolve([]),
     ]);
 
-    console.log('recentMessagesData:::::', recentMessagesData.length);
-
     // Filter the most relevant messages using the reranker if we have more than 15 messages
     const filteredRecentMessages =
-      recentMessagesData.length > 15
-        ? await filterRelevantMessages(runtime, recentMessagesData, message.content.text, 15)
+      recentMessagesData.length > 2
+        ? await filterRelevantMessages(runtime, recentMessagesData, message.content.text, 15, 0.04)
         : recentMessagesData;
 
     // Filter the most relevant interactions using the reranker if we have more than 10 interactions
     const filteredRecentInteractions =
-      recentInteractionsData.length > 10
-        ? await filterRelevantMessages(runtime, recentInteractionsData, message.content.text, 10)
+      recentInteractionsData.length > 2
+        ? await filterRelevantMessages(
+            runtime,
+            recentInteractionsData,
+            message.content.text,
+            10,
+            0.04
+          )
         : recentInteractionsData;
 
     const isPostFormat = room?.type === ChannelType.FEED || room?.type === ChannelType.THREAD;
@@ -296,8 +297,6 @@ export const recentMessagesProvider: Provider = {
     const text = [isPostFormat ? recentPosts : recentMessages + recieveMessage]
       .filter(Boolean)
       .join('\n\n');
-
-    console.log('RERRANKED TEXT:::::', text);
 
     return {
       data,
