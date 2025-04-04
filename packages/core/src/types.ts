@@ -1419,84 +1419,6 @@ export interface VideoProcessingParams extends BaseModelParams {
 }
 
 /**
- * Parameters for reranker models
- */
-export interface RerankerParams extends BaseModelParams {
-  /** The query string to be reranked against documents */
-  query: string;
-
-  /** An array of documents to be reranked */
-  documents: string[];
-
-  /** Optional maximum number of results to return */
-  maxResults?: number;
-
-  /** Optional model name, defaults to the best-performing model */
-  model?: string;
-
-  /** Optional parameter to control how the API handles documents exceeding token limits (Cohere-specific) */
-  truncate?: string;
-
-  /** Optional parameter for controlling document chunking (Cohere-specific) */
-  maxChunksPerDoc?: number;
-
-  /** Optional parameter for testing different reranker versions (Cohere-specific) */
-  evaluationMode?: boolean;
-}
-
-/**
- * Generic interface representing a reranked document
- */
-export interface RerankedDocument {
-  /** The original index of the document */
-  index: number;
-
-  /** The relevance score assigned by the reranker */
-  score: number;
-
-  /** The document content */
-  document: string;
-}
-
-/**
- * Generic interface for reranker request without runtime
- */
-export interface RerankerRequest {
-  /** The query to use for reranking */
-  query: string;
-
-  /** The documents to rerank */
-  documents: string[];
-
-  /** Optional maximum results to return */
-  maxResults?: number;
-
-  /** Optional specific model to use */
-  model?: string;
-
-  /** Optional parameter to control how the API handles documents exceeding token limits (Cohere-specific) */
-  truncate?: string;
-
-  /** Optional parameter for controlling document chunking (Cohere-specific) */
-  maxChunksPerDoc?: number;
-
-  /** Optional parameter for testing different reranker versions (Cohere-specific) */
-  evaluationMode?: boolean;
-}
-
-/**
- * Generic interface for reranker model response
- * @template T The model-specific response format
- */
-export interface RerankerResponse<T = any> {
-  /** Raw response from the reranker API */
-  raw: T;
-
-  /** Standardized reranked documents */
-  results: RerankedDocument[];
-}
-
-/**
  * Optional JSON schema for validating generated objects
  */
 export type JSONSchema = {
@@ -1529,6 +1451,24 @@ export interface ObjectGenerationParams<T = any> extends BaseModelParams {
 }
 
 /**
+ * Parameters for text reranking models
+ */
+export interface RerankerParams extends BaseModelParams {
+  /** Search query to rank documents against */
+  query: string;
+  /** Documents to rerank */
+  documents: string[];
+  /** Filter results by minimum relevance score */
+  minScoreThreshold?: number;
+  /** Maximum number of results to return */
+  topN?: number;
+  /** Include document text in results */
+  returnDocuments?: boolean;
+  /** Maximum tokens per document (default: 4096) */
+  maxTokensPerDoc?: number;
+}
+
+/**
  * Map of model types to their parameter types
  */
 export interface ModelParamsMap {
@@ -1547,6 +1487,9 @@ export interface ModelParamsMap {
   [ModelType.VIDEO]: VideoProcessingParams;
   [ModelType.OBJECT_SMALL]: ObjectGenerationParams<any>;
   [ModelType.OBJECT_LARGE]: ObjectGenerationParams<any>;
+  [ModelType.TEXT_RERANKER]:
+    | RerankerParams
+    | { query: string; documents: string[]; maxResults?: number; minScoreThreshold?: number };
   // Allow string index for custom model types
   [key: string]: BaseModelParams | any;
 }
@@ -1570,6 +1513,7 @@ export interface ModelResultMap {
   [ModelType.VIDEO]: any; // Specific return type depends on processing type
   [ModelType.OBJECT_SMALL]: any;
   [ModelType.OBJECT_LARGE]: any;
+  [ModelType.TEXT_RERANKER]: any; // Implemented in the reranker plugin
   // Allow string index for custom model types
   [key: string]: any;
 }
