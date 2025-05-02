@@ -273,6 +273,8 @@ const messageReceivedHandler = async ({
       if (shouldRespond) {
         state = await runtime.composeState(message);
 
+        console.log('DO I HAVE KNOWLEDGE ON THE STATE:::::', state);
+
         const prompt = composePromptFromState({
           state,
           template: runtime.character.templates?.messageHandlerTemplate || messageHandlerTemplate,
